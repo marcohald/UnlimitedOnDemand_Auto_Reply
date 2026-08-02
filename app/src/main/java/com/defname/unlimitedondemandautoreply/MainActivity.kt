@@ -53,6 +53,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import android.content.pm.ApplicationInfo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -61,6 +64,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
@@ -149,6 +153,80 @@ class MainActivity : ComponentActivity() {
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
         return prefs.getString(key, "") ?: ""
     }
+
+    fun getInstalledApps(): List<ApplicationInfo> {
+        val pm = packageManager
+        return pm.getInstalledApplications(PackageManager.GET_META_DATA)
+    }
+}
+
+data class AppItem(val appName: String, val packageName: String)
+
+@Composable
+fun AppSelectionDialog(
+    installedApps: List<ApplicationInfo>,
+    packageManager: PackageManager,
+    onAppSelected: (String) -> Unit,
+    onDismissRequest: () -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+
+    // Map installed apps to AppItem only once when installedApps changes
+    val appItems = remember(installedApps) {
+        installedApps.map { appInfo ->
+            AppItem(
+                appName = packageManager.getApplicationLabel(appInfo).toString(),
+                packageName = appInfo.packageName
+            )
+        }
+    }
+
+    // Filter the mapped items
+    val filteredApps = remember(searchQuery, appItems) {
+        appItems.filter { appItem ->
+            appItem.appName.contains(searchQuery, ignoreCase = true) ||
+            appItem.packageName.contains(searchQuery, ignoreCase = true)
+        }.sortedBy { it.appName.lowercase() }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        title = {
+            Column {
+                Text(stringResource(R.string.select_app_title))
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = { Text(stringResource(R.string.search_app_hint)) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        text = {
+            LazyColumn {
+                items(filteredApps) { appItem ->
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                onAppSelected(appItem.packageName)
+                            }
+                            .padding(vertical = 8.dp)
+                    ) {
+                        Text(text = appItem.appName, style = MaterialTheme.typography.bodyLarge)
+                        Text(text = appItem.packageName, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                    }
+                    androidx.compose.material3.HorizontalDivider(color = Color.LightGray, thickness = 0.5.dp)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismissRequest) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @Composable
@@ -161,7 +239,9 @@ fun SettingsScreen(
     checkNotificationPermission: () -> Boolean,
     onRequestNotificationService: () -> Unit,
     checkNotificationServiceEnabled: () -> Boolean,
-    getDefaultSmsPackage: () -> String?
+    getDefaultSmsPackage: () -> String?,
+    getInstalledApps: () -> List<ApplicationInfo>,
+    packageManager: PackageManager
 ) {
     var smsPermissionGranted by remember { mutableStateOf(checkSMSPermissions()) }
     var notificationPermissionGranted by remember { mutableStateOf(checkNotificationPermission()) }
@@ -174,6 +254,8 @@ fun SettingsScreen(
     var answer by remember { mutableStateOf(onGetSetting("answer")) }
     var minDelay by remember { mutableStateOf(onGetSetting("min_delay")) }
     var maxDelay by remember { mutableStateOf(onGetSetting("max_delay")) }
+
+    var showAppSelectionDialog by remember { mutableStateOf(false) }
 
     // Aktualisieren Sie den Status, wenn die Composable-Funktion neu zusammengesetzt wird (z. B. nach onResume)
     LaunchedEffect(Unit) {
@@ -263,13 +345,24 @@ fun SettingsScreen(
                 placeholder = { Text(stringResource(R.string.edit_app_package_hint)) },
                 modifier = Modifier.fillMaxWidth()
             )
-            androidx.compose.material3.Button(onClick = {
-                getDefaultSmsPackage()?.let {
-                    smsAppPackage = it
-                    onSaveSetting("sms_app", it)
+            Row {
+                androidx.compose.material3.Button(
+                    onClick = {
+                        getDefaultSmsPackage()?.let {
+                            smsAppPackage = it
+                            onSaveSetting("sms_app", it)
+                        }
+                    },
+                    modifier = Modifier.padding(end = 8.dp)
+                ) {
+                    Text(stringResource(R.string.button_sms_app_caption))
                 }
-            }) {
-                Text(stringResource(R.string.button_sms_app_caption))
+
+                androidx.compose.material3.Button(
+                    onClick = { showAppSelectionDialog = true }
+                ) {
+                    Text(stringResource(R.string.select_app_btn))
+                }
             }
 
 
@@ -361,6 +454,19 @@ fun SettingsScreen(
             }
         }
     }
+
+    if (showAppSelectionDialog) {
+        AppSelectionDialog(
+            installedApps = getInstalledApps(),
+            packageManager = packageManager,
+            onAppSelected = {
+                smsAppPackage = it
+                onSaveSetting("sms_app", it)
+                showAppSelectionDialog = false
+            },
+            onDismissRequest = { showAppSelectionDialog = false }
+        )
+    }
 }
 
 @Composable
@@ -394,7 +500,9 @@ fun MainScreen(activity: MainActivity) {
                 checkNotificationPermission = activity::checkNotificationPermission,
                 onRequestNotificationService = activity::requestNotificationService,
                 checkNotificationServiceEnabled = activity::checkNotificationServiceEnabled,
-                getDefaultSmsPackage = { Telephony.Sms.getDefaultSmsPackage(activity) }
+                getDefaultSmsPackage = { Telephony.Sms.getDefaultSmsPackage(activity) },
+                getInstalledApps = activity::getInstalledApps,
+                packageManager = activity.packageManager
             ) // Deine bisherige UI
             1 -> LogScreen()      // Die neue Log-Ansicht
         }
@@ -423,7 +531,7 @@ fun LogScreen() {
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
-            Divider(color = Color.LightGray, thickness = 0.5.dp)
+            androidx.compose.material3.HorizontalDivider(color = Color.LightGray, thickness = 0.5.dp)
         }
     }
 }

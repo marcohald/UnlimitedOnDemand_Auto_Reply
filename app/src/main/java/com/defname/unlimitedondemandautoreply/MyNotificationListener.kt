@@ -73,15 +73,28 @@ class MyNotificationListenerService : NotificationListenerService() {
         Log.d("NotifListener", "text: $text")
 
         // check if the notification matches the specified criteria
-        if (packageName.equals(smsApp) && (title != null && title.contains(titleMatch ?: ""))
-            && (text != null && text.contains(bodyMatch.toString()))) {
-            Log.d("NotifListener", "Notification matched")
-            LogManager.addLog("Notification matched. Waiting for ${delay/1000}s...")
+        if (packageName.equals(smsApp)) {
+            val titleMatches = title != null && title.contains(titleMatch ?: "")
+            val bodyMatches = text != null && text.contains(bodyMatch.toString())
 
-            // send the SMS after the specified delay
-            Handler(Looper.getMainLooper()).postDelayed({
-                sendSMS(number.toString(), answer.toString())
-            }, delay)
+            if (titleMatches && bodyMatches) {
+                Log.d("NotifListener", "Notification matched")
+                LogManager.addLog("Notification matched. Waiting for ${delay / 1000}s...")
+
+                // send the SMS after the specified delay
+                Handler(Looper.getMainLooper()).postDelayed({
+                    sendSMS(number.toString(), answer.toString())
+                }, delay)
+            } else {
+                val reason = if (!titleMatches && !bodyMatches) {
+                    "Title and Body mismatch"
+                } else if (!titleMatches) {
+                    "Title mismatch"
+                } else {
+                    "Body mismatch"
+                }
+                LogManager.addLog("Notification ignored: $reason. Title: '$title', Body: '${text?.take(20)}...'")
+            }
         }
     }
 

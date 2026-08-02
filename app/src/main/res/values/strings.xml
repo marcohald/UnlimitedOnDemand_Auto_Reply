@@ -24,4 +24,8 @@
     <string name="notification_title_matched">Notification Matched</string>
     <string name="notification_title_send">Message Send</string>
     <string name="edit_delay_caption">Delay for random min/max seconds before sending the SMS</string>
+
+    <string name="select_app_btn">Select App</string>
+    <string name="search_app_hint">Search apps...</string>
+    <string name="select_app_title">Select Application</string>
 </resources>
