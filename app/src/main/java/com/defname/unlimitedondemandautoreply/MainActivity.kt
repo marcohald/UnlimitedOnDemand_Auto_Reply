@@ -74,6 +74,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import kotlinx.coroutines.delay
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -671,6 +672,7 @@ fun DataScreen(activity: MainActivity) {
 @Composable
 fun LogScreen(refreshTrigger: Int) {
     val logs = remember(refreshTrigger) { LogManager.logs.toList() }
+    var selectedLog by remember { mutableStateOf<LogManager.LogEntry?>(null) }
 
     LazyColumn(
         modifier = Modifier
@@ -678,7 +680,12 @@ fun LogScreen(refreshTrigger: Int) {
             .padding(8.dp)
     ) {
         items(logs) { entry ->
-            Row(modifier = Modifier.padding(vertical = 4.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { selectedLog = entry }
+                    .padding(vertical = 4.dp)
+            ) {
                 Text(
                     text = "[${entry.timestamp}]",
                     style = MaterialTheme.typography.bodySmall,
@@ -687,11 +694,41 @@ fun LogScreen(refreshTrigger: Int) {
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = entry.message,
-                    style = MaterialTheme.typography.bodyMedium
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
             androidx.compose.material3.HorizontalDivider(color = Color.LightGray, thickness = 0.5.dp)
         }
+    }
+
+    if (selectedLog != null) {
+        AlertDialog(
+            onDismissRequest = { selectedLog = null },
+            title = {
+                Text(text = "Log Details")
+            },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Text(
+                        text = "[${selectedLog!!.timestamp}]",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    Text(
+                        text = selectedLog!!.message,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { selectedLog = null }) {
+                    Text("Close")
+                }
+            }
+        )
     }
 }
 
