@@ -55,12 +55,12 @@ class MyNotificationListenerService : NotificationListenerService() {
         // read the settings from SharedPreferences
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
         val smsApp = prefs.getString("sms_app", "")
-        val titleMatch = prefs.getString("title_match", "")
-        val bodyMatch = prefs.getString("body_match", "")
-        val number = prefs.getString("number", "")
-        val answer = prefs.getString("answer", "")
-        val minDelay = prefs.getString("min_delay", "5")?.toLongOrNull() ?: 5
-        val maxDelay = prefs.getString("max_delay", "30")?.toLongOrNull() ?: 30
+        val titleMatch = prefs.getString("title_match", "80112")
+        val bodyMatch = prefs.getString("body_match", "WEITER")
+        val number = prefs.getString("number", "80112")
+        val answer = prefs.getString("answer", "WEITER")
+        val minDelay = prefs.getString("min_delay", "15")?.toLongOrNull() ?: 15
+        val maxDelay = prefs.getString("max_delay", "300")?.toLongOrNull() ?: 300
 
         // calculate a random delay within the specified range (ensure max > min)
         val minMillis = minDelay * 1000
@@ -73,15 +73,28 @@ class MyNotificationListenerService : NotificationListenerService() {
         Log.d("NotifListener", "text: $text")
 
         // check if the notification matches the specified criteria
-        if (packageName.equals(smsApp) && (title != null && title.contains(titleMatch ?: ""))
-            && (text != null && text.contains(bodyMatch.toString()))) {
-            Log.d("NotifListener", "Notification matched")
-            LogManager.addLog("Notification matched. Waiting for ${delay/1000}s...")
+        if (packageName.equals(smsApp)) {
+            val titleMatches = title != null && title.contains(titleMatch ?: "")
+            val bodyMatches = text != null && text.contains(bodyMatch.toString())
 
-            // send the SMS after the specified delay
-            Handler(Looper.getMainLooper()).postDelayed({
-                sendSMS(number.toString(), answer.toString())
-            }, delay)
+            if (titleMatches && bodyMatches) {
+                Log.d("NotifListener", "Notification matched")
+                LogManager.addLog("Notification matched. Waiting for ${delay / 1000}s...")
+
+                // send the SMS after the specified delay
+                Handler(Looper.getMainLooper()).postDelayed({
+                    sendSMS(number.toString(), answer.toString())
+                }, delay)
+            } else {
+                val reason = if (!titleMatches && !bodyMatches) {
+                    "Title and Body mismatch"
+                } else if (!titleMatches) {
+                    "Title mismatch"
+                } else {
+                    "Body mismatch"
+                }
+                LogManager.addLog("Notification ignored: $reason. Title: '$title', Body: '${text?.take(20)}...'")
+            }
         }
     }
 
@@ -174,7 +187,16 @@ class MyNotificationListenerService : NotificationListenerService() {
         override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
             val code = resultCode
             val message = when (code) {
-                android.app.Activity.RESULT_OK -> "SMS sent successfully!"
+                android.app.Activity.RESULT_OK -> {
+                    // Record data usage before resetting
+                    val dataUsedBytes = context?.let { DataManager.getDataUsageSinceLastSms(it) } ?: 0L
+                    val dataUsedStr = DataManager.formatBytes(dataUsedBytes)
+
+                    // Reset the baseline for next time
+                    context?.let { DataManager.recordSmsSent(it) }
+
+                    "SMS sent successfully! Data used since last SMS: $dataUsedStr"
+                }
                 SmsManager.RESULT_ERROR_GENERIC_FAILURE -> "Error: Generic failure (maybe no balance?)"
                 SmsManager.RESULT_ERROR_NO_SERVICE -> "Error: No service (no network)"
                 SmsManager.RESULT_ERROR_NULL_PDU -> "Error: PDU empty"

@@ -24,6 +24,8 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.net.Uri
 import android.provider.Settings
 import android.provider.Telephony
 import android.util.Log
@@ -53,6 +55,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import android.content.pm.ApplicationInfo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -61,10 +66,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import kotlinx.coroutines.delay
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
@@ -140,54 +150,151 @@ class MainActivity : ComponentActivity() {
         startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
     }
 
+    fun checkBatteryOptimization(): Boolean {
+        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+        return powerManager.isIgnoringBatteryOptimizations(packageName)
+    }
+
+    fun requestBatteryOptimization() {
+        if (!checkBatteryOptimization()) {
+            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = Uri.parse("package:$packageName")
+            }
+            startActivity(intent)
+        }
+    }
+
     fun saveSetting(key: String, value: String) {
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
         prefs.edit() { putString(key, value) }
     }
 
-    fun getSetting(key: String): String {
+    fun getSetting(key: String, defaultValue: String = ""): String {
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
-        return prefs.getString(key, "") ?: ""
+        return prefs.getString(key, defaultValue) ?: defaultValue
     }
+
+    fun getInstalledApps(): List<ApplicationInfo> {
+        val pm = packageManager
+        return pm.getInstalledApplications(PackageManager.GET_META_DATA)
+    }
+}
+
+data class AppItem(val appName: String, val packageName: String)
+
+@Composable
+fun AppSelectionDialog(
+    installedApps: List<ApplicationInfo>,
+    packageManager: PackageManager,
+    onAppSelected: (String) -> Unit,
+    onDismissRequest: () -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+
+    // Map installed apps to AppItem only once when installedApps changes
+    val appItems = remember(installedApps) {
+        installedApps.map { appInfo ->
+            AppItem(
+                appName = packageManager.getApplicationLabel(appInfo).toString(),
+                packageName = appInfo.packageName
+            )
+        }
+    }
+
+    // Filter the mapped items
+    val filteredApps = remember(searchQuery, appItems) {
+        appItems.filter { appItem ->
+            appItem.appName.contains(searchQuery, ignoreCase = true) ||
+            appItem.packageName.contains(searchQuery, ignoreCase = true)
+        }.sortedBy { it.appName.lowercase() }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        title = {
+            Column {
+                Text(stringResource(R.string.select_app_title))
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = { Text(stringResource(R.string.search_app_hint)) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        text = {
+            LazyColumn {
+                items(filteredApps) { appItem ->
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                onAppSelected(appItem.packageName)
+                            }
+                            .padding(vertical = 8.dp)
+                    ) {
+                        Text(text = appItem.appName, style = MaterialTheme.typography.bodyLarge)
+                        Text(text = appItem.packageName, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                    }
+                    androidx.compose.material3.HorizontalDivider(color = Color.LightGray, thickness = 0.5.dp)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismissRequest) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @Composable
 fun SettingsScreen(
     onSaveSetting: (String, String) -> Unit,
-    onGetSetting: (String) -> String,
+    onGetSetting: (String, String) -> String,
     onRequestSMSPermissions: () -> Unit,
     checkSMSPermissions: () -> Boolean,
     onRequestNotificationPermission: () -> Unit,
     checkNotificationPermission: () -> Boolean,
     onRequestNotificationService: () -> Unit,
     checkNotificationServiceEnabled: () -> Boolean,
-    getDefaultSmsPackage: () -> String?
+    getDefaultSmsPackage: () -> String?,
+    getInstalledApps: () -> List<ApplicationInfo>,
+    packageManager: PackageManager,
+    checkBatteryOptimization: () -> Boolean,
+    onRequestBatteryOptimization: () -> Unit,
+    refreshTrigger: Int
 ) {
     var smsPermissionGranted by remember { mutableStateOf(checkSMSPermissions()) }
     var notificationPermissionGranted by remember { mutableStateOf(checkNotificationPermission()) }
     var notificationServiceEnabled by remember { mutableStateOf(checkNotificationServiceEnabled()) }
+    var batteryOptimizationGranted by remember { mutableStateOf(checkBatteryOptimization()) }
 
-    var smsAppPackage by remember { mutableStateOf(onGetSetting("sms_app")) }
-    var titleMatch by remember { mutableStateOf(onGetSetting("title_match")) }
-    var bodyMatch by remember { mutableStateOf(onGetSetting("body_match")) }
-    var number by remember { mutableStateOf(onGetSetting("number")) }
-    var answer by remember { mutableStateOf(onGetSetting("answer")) }
-    var minDelay by remember { mutableStateOf(onGetSetting("min_delay")) }
-    var maxDelay by remember { mutableStateOf(onGetSetting("max_delay")) }
+    var smsAppPackage by remember { mutableStateOf(onGetSetting("sms_app", "")) }
+    var titleMatch by remember { mutableStateOf(onGetSetting("title_match", "80112")) }
+    var bodyMatch by remember { mutableStateOf(onGetSetting("body_match", "WEITER")) }
+    var number by remember { mutableStateOf(onGetSetting("number", "80112")) }
+    var answer by remember { mutableStateOf(onGetSetting("answer", "WEITER")) }
+    var minDelay by remember { mutableStateOf(onGetSetting("min_delay", "15")) }
+    var maxDelay by remember { mutableStateOf(onGetSetting("max_delay", "300")) }
+
+    var showAppSelectionDialog by remember { mutableStateOf(false) }
 
     // Aktualisieren Sie den Status, wenn die Composable-Funktion neu zusammengesetzt wird (z. B. nach onResume)
-    LaunchedEffect(Unit) {
+    LaunchedEffect(refreshTrigger) {
         smsPermissionGranted = checkSMSPermissions()
         notificationPermissionGranted = checkNotificationPermission()
         notificationServiceEnabled = checkNotificationServiceEnabled()
+        batteryOptimizationGranted = checkBatteryOptimization()
         // Laden Sie die Einstellungen neu, falls sie extern geändert wurden
-        smsAppPackage = onGetSetting("sms_app")
-        titleMatch = onGetSetting("title_match")
-        bodyMatch = onGetSetting("body_match")
-        number = onGetSetting("number")
-        answer = onGetSetting("answer")
-        minDelay = onGetSetting("min_delay")
-        maxDelay = onGetSetting("max_delay")
+        smsAppPackage = onGetSetting("sms_app", "")
+        titleMatch = onGetSetting("title_match", "80112")
+        bodyMatch = onGetSetting("body_match", "WEITER")
+        number = onGetSetting("number", "80112")
+        answer = onGetSetting("answer", "WEITER")
+        minDelay = onGetSetting("min_delay", "15")
+        maxDelay = onGetSetting("max_delay", "300")
     }
 
 
@@ -250,6 +357,24 @@ fun SettingsScreen(
                 Text(stringResource(R.string.enable_notification_listener_btn))
             }
 
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Battery Optimization Status
+            Text(
+                text = if (batteryOptimizationGranted) stringResource(R.string.battery_optimization_granted)
+                else stringResource(R.string.battery_optimization_denied),
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            androidx.compose.material3.Button(
+                onClick = {
+                    onRequestBatteryOptimization()
+                },
+                enabled = !batteryOptimizationGranted
+            ) {
+                Text(stringResource(R.string.request_battery_optimization_btn))
+            }
+
             Spacer(modifier = Modifier.height(24.dp))
 
             // Input: App Package
@@ -263,13 +388,24 @@ fun SettingsScreen(
                 placeholder = { Text(stringResource(R.string.edit_app_package_hint)) },
                 modifier = Modifier.fillMaxWidth()
             )
-            androidx.compose.material3.Button(onClick = {
-                getDefaultSmsPackage()?.let {
-                    smsAppPackage = it
-                    onSaveSetting("sms_app", it)
+            Row {
+                androidx.compose.material3.Button(
+                    onClick = {
+                        getDefaultSmsPackage()?.let {
+                            smsAppPackage = it
+                            onSaveSetting("sms_app", it)
+                        }
+                    },
+                    modifier = Modifier.padding(end = 8.dp)
+                ) {
+                    Text(stringResource(R.string.button_sms_app_caption))
                 }
-            }) {
-                Text(stringResource(R.string.button_sms_app_caption))
+
+                androidx.compose.material3.Button(
+                    onClick = { showAppSelectionDialog = true }
+                ) {
+                    Text(stringResource(R.string.select_app_btn))
+                }
             }
 
 
@@ -361,12 +497,26 @@ fun SettingsScreen(
             }
         }
     }
+
+    if (showAppSelectionDialog) {
+        AppSelectionDialog(
+            installedApps = getInstalledApps(),
+            packageManager = packageManager,
+            onAppSelected = {
+                smsAppPackage = it
+                onSaveSetting("sms_app", it)
+                showAppSelectionDialog = false
+            },
+            onDismissRequest = { showAppSelectionDialog = false }
+        )
+    }
 }
 
 @Composable
 fun MainScreen(activity: MainActivity) {
     var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Einstellungen", "Logs")
+    var refreshTrigger by remember { mutableIntStateOf(0) }
+    val tabs = listOf("Einstellungen", "Logs", "Data")
 
     Column(
         modifier = Modifier
@@ -378,9 +528,20 @@ fun MainScreen(activity: MainActivity) {
             tabs.forEachIndexed { index, title ->
                 Tab(
                     selected = selectedTab == index,
-                    onClick = { selectedTab = index },
+                    onClick = {
+                        selectedTab = index
+                        if (index == 0) refreshTrigger++
+                    },
                     text = { Text(title) }
                 )
+            }
+        }
+
+        if (selectedTab != 2) { // Hide refresh button on Data tab as it auto-refreshes
+            Row(modifier = Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End) {
+                androidx.compose.material3.Button(onClick = { refreshTrigger++ }) {
+                    Text(if (selectedTab == 0) stringResource(R.string.refresh_btn) else stringResource(R.string.refresh_logs_btn))
+                }
             }
         }
 
@@ -394,16 +555,122 @@ fun MainScreen(activity: MainActivity) {
                 checkNotificationPermission = activity::checkNotificationPermission,
                 onRequestNotificationService = activity::requestNotificationService,
                 checkNotificationServiceEnabled = activity::checkNotificationServiceEnabled,
-                getDefaultSmsPackage = { Telephony.Sms.getDefaultSmsPackage(activity) }
+                getDefaultSmsPackage = { Telephony.Sms.getDefaultSmsPackage(activity) },
+                getInstalledApps = activity::getInstalledApps,
+                packageManager = activity.packageManager,
+                checkBatteryOptimization = activity::checkBatteryOptimization,
+                onRequestBatteryOptimization = activity::requestBatteryOptimization,
+                refreshTrigger = refreshTrigger
             ) // Deine bisherige UI
-            1 -> LogScreen()      // Die neue Log-Ansicht
+            1 -> LogScreen(refreshTrigger = refreshTrigger)      // Die neue Log-Ansicht
+            2 -> DataScreen(activity)                            // Data Usage tab
         }
     }
 }
 
 @Composable
-fun LogScreen() {
-    val logs = LogManager.logs
+fun DataScreen(activity: MainActivity) {
+    var dataUsageStr by remember { mutableStateOf("0 B") }
+    var lastSmsTime by remember { mutableStateOf(DataManager.getLastSmsTimeFormatted(activity)) }
+    var history by remember { mutableStateOf(DataManager.getHistory(activity)) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            val bytes = DataManager.getDataUsageSinceLastSms(activity)
+            dataUsageStr = DataManager.formatBytes(bytes)
+            lastSmsTime = DataManager.getLastSmsTimeFormatted(activity)
+            history = DataManager.getHistory(activity)
+            delay(1000) // Update every second
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = "Data Used Since Last SMS",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 16.dp, top = 32.dp)
+        )
+
+        Text(
+            text = dataUsageStr,
+            style = MaterialTheme.typography.displayMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(bottom = 32.dp)
+        )
+
+        Text(
+            text = "Last SMS Sent:",
+            style = MaterialTheme.typography.bodyLarge,
+            color = Color.Gray
+        )
+
+        Text(
+            text = lastSmsTime,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        Text(
+            text = "This total includes both downloaded and uploaded data for your mobile connection. It updates automatically in real-time.",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color.Gray,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(start = 32.dp, end = 32.dp, bottom = 32.dp)
+        )
+
+        androidx.compose.material3.HorizontalDivider(color = Color.LightGray, thickness = 1.dp)
+
+        Text(
+            text = "Data History",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(vertical = 16.dp).align(Alignment.Start)
+        )
+
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().weight(1f)
+        ) {
+            items(history) { entry ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween
+                ) {
+                    Text(text = entry.formattedTime, style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        text = entry.formattedBytes,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                androidx.compose.material3.HorizontalDivider(color = Color.LightGray, thickness = 0.5.dp)
+            }
+            if (history.isEmpty()) {
+                item {
+                    Text(
+                        text = "No history available yet.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.Gray,
+                        modifier = Modifier.padding(top = 16.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun LogScreen(refreshTrigger: Int) {
+    val logs = remember(refreshTrigger) { LogManager.logs.toList() }
 
     LazyColumn(
         modifier = Modifier
@@ -423,7 +690,7 @@ fun LogScreen() {
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
-            Divider(color = Color.LightGray, thickness = 0.5.dp)
+            androidx.compose.material3.HorizontalDivider(color = Color.LightGray, thickness = 0.5.dp)
         }
     }
 }
