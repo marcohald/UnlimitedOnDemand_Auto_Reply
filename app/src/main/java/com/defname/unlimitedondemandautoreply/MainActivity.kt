@@ -24,6 +24,8 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.net.Uri
 import android.provider.Settings
 import android.provider.Telephony
 import android.util.Log
@@ -144,6 +146,20 @@ class MainActivity : ComponentActivity() {
         startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
     }
 
+    fun checkBatteryOptimization(): Boolean {
+        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+        return powerManager.isIgnoringBatteryOptimizations(packageName)
+    }
+
+    fun requestBatteryOptimization() {
+        if (!checkBatteryOptimization()) {
+            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = Uri.parse("package:$packageName")
+            }
+            startActivity(intent)
+        }
+    }
+
     fun saveSetting(key: String, value: String) {
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
         prefs.edit() { putString(key, value) }
@@ -241,11 +257,15 @@ fun SettingsScreen(
     checkNotificationServiceEnabled: () -> Boolean,
     getDefaultSmsPackage: () -> String?,
     getInstalledApps: () -> List<ApplicationInfo>,
-    packageManager: PackageManager
+    packageManager: PackageManager,
+    checkBatteryOptimization: () -> Boolean,
+    onRequestBatteryOptimization: () -> Unit,
+    refreshTrigger: Int
 ) {
     var smsPermissionGranted by remember { mutableStateOf(checkSMSPermissions()) }
     var notificationPermissionGranted by remember { mutableStateOf(checkNotificationPermission()) }
     var notificationServiceEnabled by remember { mutableStateOf(checkNotificationServiceEnabled()) }
+    var batteryOptimizationGranted by remember { mutableStateOf(checkBatteryOptimization()) }
 
     var smsAppPackage by remember { mutableStateOf(onGetSetting("sms_app")) }
     var titleMatch by remember { mutableStateOf(onGetSetting("title_match")) }
@@ -258,10 +278,11 @@ fun SettingsScreen(
     var showAppSelectionDialog by remember { mutableStateOf(false) }
 
     // Aktualisieren Sie den Status, wenn die Composable-Funktion neu zusammengesetzt wird (z. B. nach onResume)
-    LaunchedEffect(Unit) {
+    LaunchedEffect(refreshTrigger) {
         smsPermissionGranted = checkSMSPermissions()
         notificationPermissionGranted = checkNotificationPermission()
         notificationServiceEnabled = checkNotificationServiceEnabled()
+        batteryOptimizationGranted = checkBatteryOptimization()
         // Laden Sie die Einstellungen neu, falls sie extern geändert wurden
         smsAppPackage = onGetSetting("sms_app")
         titleMatch = onGetSetting("title_match")
@@ -330,6 +351,24 @@ fun SettingsScreen(
                 onRequestNotificationService()
             }) {
                 Text(stringResource(R.string.enable_notification_listener_btn))
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Battery Optimization Status
+            Text(
+                text = if (batteryOptimizationGranted) stringResource(R.string.battery_optimization_granted)
+                else stringResource(R.string.battery_optimization_denied),
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            androidx.compose.material3.Button(
+                onClick = {
+                    onRequestBatteryOptimization()
+                },
+                enabled = !batteryOptimizationGranted
+            ) {
+                Text(stringResource(R.string.request_battery_optimization_btn))
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -472,6 +511,7 @@ fun SettingsScreen(
 @Composable
 fun MainScreen(activity: MainActivity) {
     var selectedTab by remember { mutableIntStateOf(0) }
+    var refreshTrigger by remember { mutableIntStateOf(0) }
     val tabs = listOf("Einstellungen", "Logs")
 
     Column(
@@ -484,9 +524,18 @@ fun MainScreen(activity: MainActivity) {
             tabs.forEachIndexed { index, title ->
                 Tab(
                     selected = selectedTab == index,
-                    onClick = { selectedTab = index },
+                    onClick = {
+                        selectedTab = index
+                        if (index == 0) refreshTrigger++
+                    },
                     text = { Text(title) }
                 )
+            }
+        }
+
+        Row(modifier = Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End) {
+            androidx.compose.material3.Button(onClick = { refreshTrigger++ }) {
+                Text(if (selectedTab == 0) stringResource(R.string.refresh_btn) else stringResource(R.string.refresh_logs_btn))
             }
         }
 
@@ -502,16 +551,19 @@ fun MainScreen(activity: MainActivity) {
                 checkNotificationServiceEnabled = activity::checkNotificationServiceEnabled,
                 getDefaultSmsPackage = { Telephony.Sms.getDefaultSmsPackage(activity) },
                 getInstalledApps = activity::getInstalledApps,
-                packageManager = activity.packageManager
+                packageManager = activity.packageManager,
+                checkBatteryOptimization = activity::checkBatteryOptimization,
+                onRequestBatteryOptimization = activity::requestBatteryOptimization,
+                refreshTrigger = refreshTrigger
             ) // Deine bisherige UI
-            1 -> LogScreen()      // Die neue Log-Ansicht
+            1 -> LogScreen(refreshTrigger = refreshTrigger)      // Die neue Log-Ansicht
         }
     }
 }
 
 @Composable
-fun LogScreen() {
-    val logs = LogManager.logs
+fun LogScreen(refreshTrigger: Int) {
+    val logs = remember(refreshTrigger) { LogManager.logs.toList() }
 
     LazyColumn(
         modifier = Modifier
