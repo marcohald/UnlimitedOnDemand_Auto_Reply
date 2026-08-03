@@ -169,9 +169,9 @@ class MainActivity : ComponentActivity() {
         prefs.edit() { putString(key, value) }
     }
 
-    fun getSetting(key: String): String {
+    fun getSetting(key: String, defaultValue: String = ""): String {
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
-        return prefs.getString(key, "") ?: ""
+        return prefs.getString(key, defaultValue) ?: defaultValue
     }
 
     fun getInstalledApps(): List<ApplicationInfo> {
@@ -252,7 +252,7 @@ fun AppSelectionDialog(
 @Composable
 fun SettingsScreen(
     onSaveSetting: (String, String) -> Unit,
-    onGetSetting: (String) -> String,
+    onGetSetting: (String, String) -> String,
     onRequestSMSPermissions: () -> Unit,
     checkSMSPermissions: () -> Boolean,
     onRequestNotificationPermission: () -> Unit,
@@ -271,13 +271,13 @@ fun SettingsScreen(
     var notificationServiceEnabled by remember { mutableStateOf(checkNotificationServiceEnabled()) }
     var batteryOptimizationGranted by remember { mutableStateOf(checkBatteryOptimization()) }
 
-    var smsAppPackage by remember { mutableStateOf(onGetSetting("sms_app")) }
-    var titleMatch by remember { mutableStateOf(onGetSetting("title_match")) }
-    var bodyMatch by remember { mutableStateOf(onGetSetting("body_match")) }
-    var number by remember { mutableStateOf(onGetSetting("number")) }
-    var answer by remember { mutableStateOf(onGetSetting("answer")) }
-    var minDelay by remember { mutableStateOf(onGetSetting("min_delay")) }
-    var maxDelay by remember { mutableStateOf(onGetSetting("max_delay")) }
+    var smsAppPackage by remember { mutableStateOf(onGetSetting("sms_app", "")) }
+    var titleMatch by remember { mutableStateOf(onGetSetting("title_match", "80112")) }
+    var bodyMatch by remember { mutableStateOf(onGetSetting("body_match", "WEITER")) }
+    var number by remember { mutableStateOf(onGetSetting("number", "80112")) }
+    var answer by remember { mutableStateOf(onGetSetting("answer", "WEITER")) }
+    var minDelay by remember { mutableStateOf(onGetSetting("min_delay", "15")) }
+    var maxDelay by remember { mutableStateOf(onGetSetting("max_delay", "300")) }
 
     var showAppSelectionDialog by remember { mutableStateOf(false) }
 
@@ -288,13 +288,13 @@ fun SettingsScreen(
         notificationServiceEnabled = checkNotificationServiceEnabled()
         batteryOptimizationGranted = checkBatteryOptimization()
         // Laden Sie die Einstellungen neu, falls sie extern geändert wurden
-        smsAppPackage = onGetSetting("sms_app")
-        titleMatch = onGetSetting("title_match")
-        bodyMatch = onGetSetting("body_match")
-        number = onGetSetting("number")
-        answer = onGetSetting("answer")
-        minDelay = onGetSetting("min_delay")
-        maxDelay = onGetSetting("max_delay")
+        smsAppPackage = onGetSetting("sms_app", "")
+        titleMatch = onGetSetting("title_match", "80112")
+        bodyMatch = onGetSetting("body_match", "WEITER")
+        number = onGetSetting("number", "80112")
+        answer = onGetSetting("answer", "WEITER")
+        minDelay = onGetSetting("min_delay", "15")
+        maxDelay = onGetSetting("max_delay", "300")
     }
 
 

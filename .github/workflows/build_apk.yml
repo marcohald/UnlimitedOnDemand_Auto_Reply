@@ -27,8 +27,20 @@ jobs:
             ./gradlew assembleDebug
           fi
 
+      - name: Sign APK
+        if: github.ref == 'refs/heads/main'
+        uses: r0adkll/sign-android-release@v1
+        id: sign_app
+        with:
+          releaseDirectory: app/build/outputs/apk/release
+          signingKeyBase64: ${{ secrets.KEYSTORE_BASE64 }}
+          alias: ${{ secrets.KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.STORE_PASSWORD }}
+
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-apk
-          path: app/build/outputs/apk/**/*.apk
+          path: |
+            app/build/outputs/apk/**/*.apk
+            !app/build/outputs/apk/release/*-unsigned.apk

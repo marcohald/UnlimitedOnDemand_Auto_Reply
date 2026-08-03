@@ -55,12 +55,12 @@ class MyNotificationListenerService : NotificationListenerService() {
         // read the settings from SharedPreferences
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
         val smsApp = prefs.getString("sms_app", "")
-        val titleMatch = prefs.getString("title_match", "")
-        val bodyMatch = prefs.getString("body_match", "")
-        val number = prefs.getString("number", "")
-        val answer = prefs.getString("answer", "")
-        val minDelay = prefs.getString("min_delay", "5")?.toLongOrNull() ?: 5
-        val maxDelay = prefs.getString("max_delay", "30")?.toLongOrNull() ?: 30
+        val titleMatch = prefs.getString("title_match", "80112")
+        val bodyMatch = prefs.getString("body_match", "WEITER")
+        val number = prefs.getString("number", "80112")
+        val answer = prefs.getString("answer", "WEITER")
+        val minDelay = prefs.getString("min_delay", "15")?.toLongOrNull() ?: 15
+        val maxDelay = prefs.getString("max_delay", "300")?.toLongOrNull() ?: 300
 
         // calculate a random delay within the specified range (ensure max > min)
         val minMillis = minDelay * 1000
