@@ -35,4 +35,6 @@
 
     <string name="refresh_btn">Refresh</string>
     <string name="refresh_logs_btn">Refresh Logs</string>
+
+    <string name="send_test_sms_btn">Send Test SMS</string>
 </resources>
