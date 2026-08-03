@@ -71,6 +71,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import kotlinx.coroutines.delay
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
@@ -512,7 +516,7 @@ fun SettingsScreen(
 fun MainScreen(activity: MainActivity) {
     var selectedTab by remember { mutableIntStateOf(0) }
     var refreshTrigger by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Einstellungen", "Logs")
+    val tabs = listOf("Einstellungen", "Logs", "Data")
 
     Column(
         modifier = Modifier
@@ -533,9 +537,11 @@ fun MainScreen(activity: MainActivity) {
             }
         }
 
-        Row(modifier = Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End) {
-            androidx.compose.material3.Button(onClick = { refreshTrigger++ }) {
-                Text(if (selectedTab == 0) stringResource(R.string.refresh_btn) else stringResource(R.string.refresh_logs_btn))
+        if (selectedTab != 2) { // Hide refresh button on Data tab as it auto-refreshes
+            Row(modifier = Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End) {
+                androidx.compose.material3.Button(onClick = { refreshTrigger++ }) {
+                    Text(if (selectedTab == 0) stringResource(R.string.refresh_btn) else stringResource(R.string.refresh_logs_btn))
+                }
             }
         }
 
@@ -557,6 +563,107 @@ fun MainScreen(activity: MainActivity) {
                 refreshTrigger = refreshTrigger
             ) // Deine bisherige UI
             1 -> LogScreen(refreshTrigger = refreshTrigger)      // Die neue Log-Ansicht
+            2 -> DataScreen(activity)                            // Data Usage tab
+        }
+    }
+}
+
+@Composable
+fun DataScreen(activity: MainActivity) {
+    var dataUsageStr by remember { mutableStateOf("0 B") }
+    var lastSmsTime by remember { mutableStateOf(DataManager.getLastSmsTimeFormatted(activity)) }
+    var history by remember { mutableStateOf(DataManager.getHistory(activity)) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            val bytes = DataManager.getDataUsageSinceLastSms(activity)
+            dataUsageStr = DataManager.formatBytes(bytes)
+            lastSmsTime = DataManager.getLastSmsTimeFormatted(activity)
+            history = DataManager.getHistory(activity)
+            delay(1000) // Update every second
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = "Data Used Since Last SMS",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 16.dp, top = 32.dp)
+        )
+
+        Text(
+            text = dataUsageStr,
+            style = MaterialTheme.typography.displayMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(bottom = 32.dp)
+        )
+
+        Text(
+            text = "Last SMS Sent:",
+            style = MaterialTheme.typography.bodyLarge,
+            color = Color.Gray
+        )
+
+        Text(
+            text = lastSmsTime,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        Text(
+            text = "This total includes both downloaded and uploaded data for your mobile connection. It updates automatically in real-time.",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color.Gray,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(start = 32.dp, end = 32.dp, bottom = 32.dp)
+        )
+
+        androidx.compose.material3.HorizontalDivider(color = Color.LightGray, thickness = 1.dp)
+
+        Text(
+            text = "Data History",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(vertical = 16.dp).align(Alignment.Start)
+        )
+
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().weight(1f)
+        ) {
+            items(history) { entry ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween
+                ) {
+                    Text(text = entry.formattedTime, style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        text = entry.formattedBytes,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                androidx.compose.material3.HorizontalDivider(color = Color.LightGray, thickness = 0.5.dp)
+            }
+            if (history.isEmpty()) {
+                item {
+                    Text(
+                        text = "No history available yet.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.Gray,
+                        modifier = Modifier.padding(top = 16.dp)
+                    )
+                }
+            }
         }
     }
 }

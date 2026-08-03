@@ -187,7 +187,16 @@ class MyNotificationListenerService : NotificationListenerService() {
         override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
             val code = resultCode
             val message = when (code) {
-                android.app.Activity.RESULT_OK -> "SMS sent successfully!"
+                android.app.Activity.RESULT_OK -> {
+                    // Record data usage before resetting
+                    val dataUsedBytes = context?.let { DataManager.getDataUsageSinceLastSms(it) } ?: 0L
+                    val dataUsedStr = DataManager.formatBytes(dataUsedBytes)
+
+                    // Reset the baseline for next time
+                    context?.let { DataManager.recordSmsSent(it) }
+
+                    "SMS sent successfully! Data used since last SMS: $dataUsedStr"
+                }
                 SmsManager.RESULT_ERROR_GENERIC_FAILURE -> "Error: Generic failure (maybe no balance?)"
                 SmsManager.RESULT_ERROR_NO_SERVICE -> "Error: No service (no network)"
                 SmsManager.RESULT_ERROR_NULL_PDU -> "Error: PDU empty"
