@@ -168,6 +168,46 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    fun sendTestSms(number: String, msg: String) {
+        try {
+            val phone = number.filter { it.isDigit() || it == '+' }
+            if (phone.isEmpty()) {
+                android.widget.Toast.makeText(this, "Phone number is empty", android.widget.Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            val smsManager = getSystemService(android.telephony.SmsManager::class.java)
+            if (smsManager == null) {
+                android.widget.Toast.makeText(this, "SmsManager service not available", android.widget.Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            // Immediately record this manual SMS event so the data page resets its tracking
+            DataManager.recordSmsSent(this)
+
+            // Reusing the same "SMS_SENT" intent action from the Notification Listener so it triggers the same log receiver
+            val intent = android.content.Intent("SMS_SENT")
+            intent.setPackage(packageName)
+
+            val sentIntent = android.app.PendingIntent.getBroadcast(
+                this,
+                0,
+                intent,
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
+                    android.app.PendingIntent.FLAG_IMMUTABLE
+                else 0
+            )
+
+            smsManager.sendTextMessage(phone, null, msg, sentIntent, null)
+            android.widget.Toast.makeText(this, "Test SMS queued", android.widget.Toast.LENGTH_SHORT).show()
+            LogManager.addLog("Manual Test SMS triggered for $phone")
+
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(this, "Test SMS Error: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
+            LogManager.addLog("Test SMS Error: ${e.localizedMessage}")
+        }
+    }
+
     fun saveSetting(key: String, value: String) {
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
         prefs.edit() { putString(key, value) }
@@ -268,7 +308,8 @@ fun SettingsScreen(
     packageManager: PackageManager,
     checkBatteryOptimization: () -> Boolean,
     onRequestBatteryOptimization: () -> Unit,
-    refreshTrigger: Int
+    refreshTrigger: Int,
+    onSendTestSms: (String, String) -> Unit
 ) {
     var smsPermissionGranted by remember { mutableStateOf(checkSMSPermissions()) }
     var notificationPermissionGranted by remember { mutableStateOf(checkNotificationPermission()) }
@@ -472,6 +513,16 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            androidx.compose.material3.Button(
+                onClick = { onSendTestSms(number, answer) },
+                enabled = smsPermissionGranted && number.isNotEmpty() && answer.isNotEmpty(),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(R.string.send_test_sms_btn))
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             Text(stringResource(R.string.edit_delay_caption), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 16.dp))
             Row(Modifier.fillMaxWidth()) {
                 OutlinedTextField(
@@ -564,7 +615,8 @@ fun MainScreen(activity: MainActivity) {
                 packageManager = activity.packageManager,
                 checkBatteryOptimization = activity::checkBatteryOptimization,
                 onRequestBatteryOptimization = activity::requestBatteryOptimization,
-                refreshTrigger = refreshTrigger
+                refreshTrigger = refreshTrigger,
+                onSendTestSms = activity::sendTestSms
             ) // Deine bisherige UI
             1 -> LogScreen(refreshTrigger = refreshTrigger)      // Die neue Log-Ansicht
             2 -> DataScreen(activity)                            // Data Usage tab
