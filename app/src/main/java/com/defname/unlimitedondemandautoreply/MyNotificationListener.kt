@@ -79,7 +79,7 @@ class MyNotificationListenerService : NotificationListenerService() {
 
             if (titleMatches && bodyMatches) {
                 Log.d("NotifListener", "Notification matched")
-                LogManager.addLog("Notification matched. Waiting for ${delay / 1000}s...")
+                LogManager.addLog("Notification matched. Waiting for ${delay / 1000}s...\nTitle: $title\nText: $text")
 
                 // send the SMS after the specified delay
                 Handler(Looper.getMainLooper()).postDelayed({
