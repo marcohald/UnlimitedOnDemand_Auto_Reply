@@ -37,4 +37,8 @@
     <string name="refresh_logs_btn">Refresh Logs</string>
 
     <string name="send_test_sms_btn">Send Test SMS</string>
+<string name="restricted_settings_title">Restricted Settings Detected</string>
+<string name="restricted_settings_message">Android restricts sensitive permissions for apps installed outside of app stores. To enable the Notification Listener:\n\n1. Click "Open App Info" below.\n2. Tap the 3 dots in the top right corner.\n3. Select "Allow restricted settings".\n4. Come back here and try again.</string>
+<string name="restricted_settings_open_btn">Open App Info</string>
+<string name="restricted_settings_cancel_btn">Cancel</string>
 </resources>

@@ -151,7 +151,22 @@ class MainActivity : ComponentActivity() {
     }
 
     fun requestNotificationService() {
-        startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+        try {
+            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error starting notification listener settings: ${e.message}")
+        }
+    }
+
+    fun openAppInfoSettings() {
+        try {
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.parse("package:$packageName")
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error opening app info settings: ${e.message}")
+        }
     }
 
     fun checkBatteryOptimization(): Boolean {
@@ -325,6 +340,7 @@ fun SettingsScreen(
     var maxDelay by remember { mutableStateOf(onGetSetting("max_delay", "300")) }
 
     var showAppSelectionDialog by remember { mutableStateOf(false) }
+    var showRestrictedSettingsDialog by remember { mutableStateOf(false) }
 
     // Aktualisieren Sie den Status, wenn die Composable-Funktion neu zusammengesetzt wird (z. B. nach onResume)
     LaunchedEffect(refreshTrigger) {
@@ -397,9 +413,34 @@ fun SettingsScreen(
                 modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
             )
             androidx.compose.material3.Button(onClick = {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !notificationServiceEnabled) {
+                    showRestrictedSettingsDialog = true
+                }
                 onRequestNotificationService()
             }) {
                 Text(stringResource(R.string.enable_notification_listener_btn))
+            }
+
+            if (showRestrictedSettingsDialog && !notificationServiceEnabled) {
+                AlertDialog(
+                    onDismissRequest = { showRestrictedSettingsDialog = false },
+                    title = { Text(stringResource(R.string.restricted_settings_title)) },
+                    text = { Text(stringResource(R.string.restricted_settings_message)) },
+                    confirmButton = {
+                        val context = androidx.compose.ui.platform.LocalContext.current
+                        TextButton(onClick = {
+                            showRestrictedSettingsDialog = false
+                            (context as? MainActivity)?.openAppInfoSettings()
+                        }) {
+                            Text(stringResource(R.string.restricted_settings_open_btn))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showRestrictedSettingsDialog = false }) {
+                            Text(stringResource(R.string.restricted_settings_cancel_btn))
+                        }
+                    }
+                )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
