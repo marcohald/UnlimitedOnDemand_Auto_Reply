@@ -68,6 +68,8 @@ jobs:
           signingKeyBase64: ${{ secrets.KEYSTORE_BASE64 }}
           alias: ${{ secrets.KEY_ALIAS }}
           keyStorePassword: ${{ secrets.STORE_PASSWORD }}
+        env:
+          BUILD_TOOLS_VERSION: "35.0.0"
 
       - name: Rename Release APK
         if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')
