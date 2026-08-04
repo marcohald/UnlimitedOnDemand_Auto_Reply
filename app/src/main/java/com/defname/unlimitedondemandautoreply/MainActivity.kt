@@ -58,6 +58,9 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import android.content.pm.ApplicationInfo
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -629,12 +632,67 @@ fun DataScreen(activity: MainActivity) {
 
         androidx.compose.material3.HorizontalDivider(color = Color.LightGray, thickness = 1.dp)
 
-        Text(
-            text = "Data History",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(vertical = 16.dp).align(Alignment.Start)
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Data History",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            Row {
+                val exportLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.CreateDocument("application/json")
+                ) { uri: Uri? ->
+                    uri?.let {
+                        try {
+                            val jsonString = DataManager.exportHistoryToJson(activity)
+                            activity.contentResolver.openOutputStream(it)?.use { outputStream ->
+                                outputStream.write(jsonString.toByteArray())
+                            }
+                            Toast.makeText(activity, "History exported successfully", Toast.LENGTH_SHORT).show()
+                        } catch (e: Exception) {
+                            Toast.makeText(activity, "Failed to export: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+
+                val importLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.OpenDocument()
+                ) { uri: Uri? ->
+                    uri?.let {
+                        try {
+                            val jsonString = activity.contentResolver.openInputStream(it)?.bufferedReader().use { reader ->
+                                reader?.readText() ?: ""
+                            }
+                            if (DataManager.importHistoryFromJson(activity, jsonString)) {
+                                Toast.makeText(activity, "History imported successfully", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(activity, "Failed to parse JSON", Toast.LENGTH_SHORT).show()
+                            }
+                        } catch (e: Exception) {
+                            Toast.makeText(activity, "Failed to import: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+
+                androidx.compose.material3.Button(
+                    onClick = { exportLauncher.launch("data_history.json") },
+                    modifier = Modifier.padding(end = 8.dp)
+                ) {
+                    Text("Export")
+                }
+
+                androidx.compose.material3.Button(
+                    onClick = { importLauncher.launch(arrayOf("application/json")) }
+                ) {
+                    Text("Import")
+                }
+            }
+        }
 
         LazyColumn(
             modifier = Modifier.fillMaxWidth().weight(1f)

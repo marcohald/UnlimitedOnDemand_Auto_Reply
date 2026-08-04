@@ -92,6 +92,53 @@ object DataManager {
     }
 
     /**
+     * Exports the history data to a JSON string.
+     */
+    fun exportHistoryToJson(context: Context): String {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val historyStr = prefs.getString(KEY_DATA_HISTORY, "") ?: ""
+
+        val jsonArray = org.json.JSONArray()
+        if (historyStr.isNotEmpty()) {
+            historyStr.split(";").forEach { entry ->
+                val parts = entry.split("|")
+                if (parts.size == 2) {
+                    val jsonObj = org.json.JSONObject()
+                    jsonObj.put("timestamp", parts[0].toLongOrNull() ?: 0L)
+                    jsonObj.put("bytesUsed", parts[1].toLongOrNull() ?: 0L)
+                    jsonArray.put(jsonObj)
+                }
+            }
+        }
+        return jsonArray.toString(2)
+    }
+
+    /**
+     * Imports the history data from a JSON string, replacing current history.
+     */
+    fun importHistoryFromJson(context: Context, jsonString: String): Boolean {
+        return try {
+            val jsonArray = org.json.JSONArray(jsonString)
+            val historyList = mutableListOf<String>()
+
+            for (i in 0 until jsonArray.length()) {
+                val jsonObj = jsonArray.getJSONObject(i)
+                val timestamp = jsonObj.optLong("timestamp", 0L)
+                val bytesUsed = jsonObj.optLong("bytesUsed", 0L)
+                historyList.add("$timestamp|$bytesUsed")
+            }
+
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val historyStr = historyList.joinToString(";")
+            prefs.edit().putString(KEY_DATA_HISTORY, historyStr).apply()
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    /**
      * Calculates the data usage since the last recorded SMS was sent.
      */
     fun getDataUsageSinceLastSms(context: Context): Long {
