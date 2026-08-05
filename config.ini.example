@@ -1,0 +1,27 @@
+[FritzBox]
+url = http://192.168.178.1
+username = admin
+password = your_password
+# totpsecret is optional, leave empty if not used
+totpsecret = YOUR_TOTP_SECRET
+
+[Settings]
+# File to store processed message identifiers
+state_file = processed_sms.json
+# Partial match for the sender's number (like Notification Title)
+sender_match = 80112
+# Partial match for the SMS text (like Notification Body)
+body_match = WEITER
+# Where to send the reply
+target_number = 80112
+# What to reply
+reply_text = WEITER
+# Delay before sending
+min_delay_seconds = 15
+max_delay_seconds = 300
+
+[Logging]
+# Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+log_level = INFO
+# Optional: File to write logs to. If empty, logs to stdout.
+log_file =
